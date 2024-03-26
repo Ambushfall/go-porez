@@ -9,7 +9,13 @@ fi
 package_split=(${package//\// })
 package_name=${package_split[-1]}
 
-platforms=("windows/amd64" "windows/386" "darwin/amd64" "linux/amd64")
+platforms=(
+"windows/amd64" # Windows AMD 64 bit
+"windows/386" # Windows 32 Bit
+"linux/amd64" # Linux running AMD 64 Bit
+"darwin/arm64" # Mac Silicon M1 ARM
+"darwin/amd64" # MacOS AMD 64 BIT < This is questionable
+)
 
 if [[ -n "$all" && "$all" == "ALL" ]]; then
 
@@ -39,7 +45,7 @@ for platform in "${platforms[@]}"; do
 	fi
 
 	echo "GOOS:$GOOS GOARCH:$GOARCH outname: $output_name"
-	env GOOS=$GOOS GOARCH=$GOARCH go build -o $GOOS/$GOARCH/$output_name .
+	env GOOS=$GOOS GOARCH=$GOARCH go build -o dist/$GOOS/$output_name .
 	if [ $? -ne 0 ]; then
 		echo 'An error has occurred! Aborting the script execution...'
 		exit 1
