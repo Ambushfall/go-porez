@@ -24,8 +24,35 @@ type ErrResponse struct {
 	Client  string `json:"client"`
 }
 
+// type UserInfoResponse struct
+
+type UserInfo struct {
+	HTTPSchemaIDRsClaimsMail       string `json:"http://schema.id.rs/claims/mail"`
+	HTTPSchemaIDRsClaimsCountry    string `json:"http://schema.id.rs/claims/country"`
+	Sub                            string `json:"sub"`
+	HTTPSchemaIDRsClaimsAal        string `json:"http://schema.id.rs/claims/aal"`
+	HTTPSchemaIDRsClaimsGivenname  string `json:"http://schema.id.rs/claims/givenname"`
+	HTTPSchemaIDRsClaimsUmcn       string `json:"http://schema.id.rs/claims/umcn"`
+	HTTPSchemaIDRsClaimsFamilyname string `json:"http://schema.id.rs/claims/familyname"`
+	HTTPSchemaIDRsClaimsCity       string `json:"http://schema.id.rs/claims/city"`
+	HTTPSchemaIDRsClaimsIal        string `json:"http://schema.id.rs/claims/ial"`
+}
+
+var jsonRes UserInfo
+
 func router(route string, handler http.HandlerFunc, user string, pass string, realm string) {
 	http.HandleFunc(route, BasicAuth(handler, user, pass, realm))
+}
+
+// Example:
+// parseJSON(jsonstring, &v)
+func parseJSON(jsonstring string, v any) {
+	resBytes := []byte(jsonstring)
+
+	err := json.Unmarshal(resBytes, &v)
+	if err != nil {
+		fmt.Println(err)
+	}
 }
 
 var email string
@@ -47,6 +74,34 @@ func init() {
 	flag.StringVar(&email, shortNameEmail, defaultEmail, usageEmail+" (shorthand)")
 	flag.StringVar(&password, defaultNamePass, defaultPass, usagePass)
 	flag.StringVar(&password, shortNamePass, defaultPass, usagePass+" (shorthand)")
+}
+
+func launchDownloaded() {
+	// Headless runs the browser on foreground, you can also use flag "-rod=show"
+	// Devtools opens the tab in each new tab opened automatically
+	l := launcher.New().
+		Headless(true).
+		Devtools(false)
+
+	defer l.Cleanup()
+
+	url := l.MustLaunch()
+
+	browser := rod.New().
+		ControlURL(url).
+		Trace(true).
+		SlowMotion(2 * time.Second).
+		MustConnect()
+
+	// ServeMonitor plays screenshots of each tab. This feature is extremely
+	// useful when debugging with headless mode.
+	// You can also enable it with flag "-rod=monitor"
+	launcher.Open(browser.ServeMonitor(""))
+
+	defer browser.MustClose()
+	fmt.Println(
+		browser.MustPage("https://mdn.dev/").MustEval("() => document.title"),
+	)
 }
 
 func hijack_requests() {
@@ -122,47 +177,58 @@ func main() {
 	log.Fatal(http.ListenAndServe(ports, nil))
 }
 
-func try_robo_Login() {
-	// Headless runs the browser on foreground, you can also use flag "-rod=show"
-	// Devtools opens the tab in each new tab opened automatically
-	l := launcher.New().
-		Headless(false).
-		Devtools(false)
-
-	defer l.Cleanup()
-
-	url := l.MustLaunch()
-
-	// Trace shows verbose debug information for each action executed
-	// SlowMotion is a debug related function that waits 2 seconds between
-	// each action, making it easier to inspect what your code is doing.
-	browser := rod.New().
-		ControlURL(url).
-		// Trace(true).
-		// SlowMotion(2 * time.Second).
-		MustConnect()
-
-	// ServeMonitor plays screenshots of each tab. This feature is extremely
-	// useful when debugging with headless mode.
-	// You can also enable it with flag "-rod=monitor"
+func startMonitor(browser *rod.Browser) {
 	launcher.Open(browser.ServeMonitor(""))
+}
 
-	defer browser.MustClose()
+func try_robo_Login() {
+	if path, exists := launcher.LookPath(); exists {
+		u := launcher.New().
+			Bin(path).
+			Headless(false).
+			// Devtools(true).
+			MustLaunch()
 
-	page :=
-		browser.MustPage("https://lpa.gov.rs/jisportal/homepage")
+		browser := rod.New().
+			ControlURL(u).
+			// SlowMotion(2 * time.Second).
+			// Trace(true).
+			MustConnect()
+		defer browser.MustClose()
 
-		// login :=
-	page.MustElement("div.sistem-login> a").MustClick()
-	page.MustElement("#username1").MustClick().MustInput(email)
-	page.MustElement("#password1").MustClick().MustInput(password)
-	page.MustElement("#aetButtonUP1").MustClick()
-	// fmt.Println(err)
-	// textarea.MustInput("git").MustType(input.Enter)
+		// startMonitor(browser)
 
-	// text := page.MustElement(".codesearch-results p").MustText()
+		router := browser.HijackRequests()
+		defer router.MustStop()
 
-	// fmt.Println(text)
+		router.MustAdd("https://prijava.eid.gov.rs/oauth2/userinfo", func(ctx *rod.Hijack) {
 
-	utils.Pause() // pause goroutine
+			ctx.Request.Req().Header.Set("My-Header", "test")
+
+			_ = ctx.LoadResponse(http.DefaultClient, true)
+			p := ctx.Response.Body()
+
+			if len(p) > 5 {
+
+				parseJSON(p, &jsonRes)
+				fmt.Println(jsonRes.HTTPSchemaIDRsClaimsUmcn)
+			}
+
+		})
+
+		go router.Run()
+
+		page :=
+			browser.MustPage("https://lpa.gov.rs/jisportal/homepage") // .MustWait(`() => document.title === 'hi'`)
+
+		fmt.Println("done")
+
+		page.MustElement("div.sistem-login> a").MustClick()
+		page.MustElement("#username1").MustClick().MustInput(email)
+		page.MustElement("#password1").MustClick().MustInput(password)
+		page.MustElement("#aetButtonUP1").MustClick()
+
+		utils.Pause() // pause goroutine
+	}
+
 }
