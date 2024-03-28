@@ -65,3 +65,7 @@ func BasicAuth(handler http.HandlerFunc, username, password, realm string) http.
 		}
 	}
 }
+
+func router(route string, handler http.HandlerFunc, user string, pass string, realm string) {
+	http.HandleFunc(route, BasicAuth(handler, user, pass, realm))
+}

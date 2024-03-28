@@ -1,10 +1,13 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"html"
+	"io"
 	"log"
 	"net/http"
 	"time"
@@ -38,11 +41,72 @@ type UserInfo struct {
 	HTTPSchemaIDRsClaimsIal        string `json:"http://schema.id.rs/claims/ial"`
 }
 
-var jsonRes UserInfo
-
-func router(route string, handler http.HandlerFunc, user string, pass string, realm string) {
-	http.HandleFunc(route, BasicAuth(handler, user, pass, realm))
+type UpitStanja struct {
+	Pib                     string                    `json:"pib"`
+	DatumZaduzenjaDo        string                    `json:"datumZaduzenjaDo"`
+	DatumUplateDo           string                    `json:"datumUplateDo"`
+	IsObveznik              bool                      `json:"isObveznik"`
+	UpitStanjaSaldoOpstList []UpitStanjaSaldoOpstList `json:"upitStanjaSaldoOpstList"`
 }
+type ListaPromena struct {
+	KnjPromSifra     string  `json:"knjPromSifra"`
+	KnjPromSifraIP   string  `json:"knjPromSifraIp"`
+	KnjPromSifraZp   string  `json:"knjPromSifraZp"`
+	KnjPromDISSifra  string  `json:"knjPromDISSifra"`
+	KnjPromDISOpis   string  `json:"knjPromDISOpis"`
+	BrojNaloga       string  `json:"brojNaloga"`
+	DisDokument      any     `json:"disDokument"`
+	Datum            string  `json:"datum"`
+	PrometDuguje     float64 `json:"prometDuguje"`
+	PrometPotrazuje  float64 `json:"prometPotrazuje"`
+	KamataZaduzenje  float64 `json:"kamataZaduzenje"`
+	KamataObracunata float64 `json:"kamataObracunata"`
+	KamataNaplacena  float64 `json:"kamataNaplacena"`
+	SaldoGlavnica    float64 `json:"saldoGlavnica"`
+	SaldoKamata      float64 `json:"saldoKamata"`
+	KnjPromOpis      string  `json:"knjPromOpis"`
+	KnjPromOpisPu    string  `json:"knjPromOpisPu"`
+}
+type UpitStanjaSaldoList struct {
+	Racun            string         `json:"racun"`
+	RacunCeo         string         `json:"racunCeo"`
+	RacunOpis        string         `json:"racunOpis"`
+	SaldoDuguje      float64        `json:"saldoDuguje"`
+	SaldoPotrazuje   float64        `json:"saldoPotrazuje"`
+	KamataZaduzenje  float64        `json:"kamataZaduzenje"`
+	KamataObracunata float64        `json:"kamataObracunata"`
+	KamataNaplacena  float64        `json:"kamataNaplacena"`
+	SaldoGlavnica    float64        `json:"saldoGlavnica"`
+	SaldoKamata      float64        `json:"saldoKamata"`
+	SaldoUkupan      float64        `json:"saldoUkupan"`
+	ListaPromena     []ListaPromena `json:"listaPromena"`
+}
+type UpitStanjaSaldoOpstList struct {
+	UpitStanjaSaldoList []UpitStanjaSaldoList `json:"upitStanjaSaldoList"`
+	SifraOpstine        string                `json:"sifraOpstine"`
+	NazivOpstine        string                `json:"nazivOpstine"`
+	PozivNaBroj         string                `json:"pozivNaBroj"`
+	ObveznikIdent       string                `json:"obveznikIdent"`
+	DatumUpita          string                `json:"datumUpita"`
+	VremeObrade         string                `json:"vremeObrade"`
+}
+
+type Upit struct {
+	DatumZaduzenjaDo any    `json:"datumZaduzenjaDo"`
+	DatumUplateDo    any    `json:"datumUplateDo"`
+	Pib              string `json:"pib"`
+	Racun            any    `json:"racun"`
+	Detail           any    `json:"detail"`
+}
+
+var jsonRes UserInfo
+var email string
+var password string
+var hasGotData bool
+var upitData Upit
+var upitStanja UpitStanja
+
+const requestURL string = "https://lpa.gov.rs/upitstanja/upit"
 
 // Example:
 // parseJSON(jsonstring, &v)
@@ -54,9 +118,6 @@ func parseJSON(jsonstring string, v any) {
 		fmt.Println(err)
 	}
 }
-
-var email string
-var password string
 
 func init() {
 	const (
@@ -74,67 +135,6 @@ func init() {
 	flag.StringVar(&email, shortNameEmail, defaultEmail, usageEmail+" (shorthand)")
 	flag.StringVar(&password, defaultNamePass, defaultPass, usagePass)
 	flag.StringVar(&password, shortNamePass, defaultPass, usagePass+" (shorthand)")
-}
-
-func launchDownloaded() {
-	// Headless runs the browser on foreground, you can also use flag "-rod=show"
-	// Devtools opens the tab in each new tab opened automatically
-	l := launcher.New().
-		Headless(true).
-		Devtools(false)
-
-	defer l.Cleanup()
-
-	url := l.MustLaunch()
-
-	browser := rod.New().
-		ControlURL(url).
-		Trace(true).
-		SlowMotion(2 * time.Second).
-		MustConnect()
-
-	// ServeMonitor plays screenshots of each tab. This feature is extremely
-	// useful when debugging with headless mode.
-	// You can also enable it with flag "-rod=monitor"
-	launcher.Open(browser.ServeMonitor(""))
-
-	defer browser.MustClose()
-	fmt.Println(
-		browser.MustPage("https://mdn.dev/").MustEval("() => document.title"),
-	)
-}
-
-func hijack_requests() {
-	browser := rod.New().MustConnect()
-	defer browser.MustClose()
-
-	router := browser.HijackRequests()
-	defer router.MustStop()
-
-	router.MustAdd("*.js", func(ctx *rod.Hijack) {
-		// Here we update the request's header. Rod gives functionality to
-		// change or update all parts of the request. Refer to the documentation
-		// for more information.
-		ctx.Request.Req().Header.Set("My-Header", "test")
-
-		// LoadResponse runs the default request to the destination of the request.
-		// Not calling this will require you to mock the entire response.
-		// This can be done with the SetXxx (Status, Header, Body) functions on the
-		// ctx.Response struct.
-		_ = ctx.LoadResponse(http.DefaultClient, true)
-
-		// Here we append some code to every js file.
-		// The code will update the document title to "hi"
-		ctx.Response.SetBody(ctx.Response.Body() + "\n document.title = 'hi' ")
-	})
-
-	go router.Run()
-
-	browser.MustPage("https://go-rod.github.io").MustWait(`() => document.title === 'hi'`)
-
-	fmt.Println("done")
-
-	// Output: done
 }
 
 func main() {
@@ -181,54 +181,132 @@ func startMonitor(browser *rod.Browser) {
 	launcher.Open(browser.ServeMonitor(""))
 }
 
+func startNativeOrPORT() *rod.Browser {
+	u, err := launcher.ResolveURL("")
+
+	if err == nil {
+		return instantiateBrowser(u)
+	} else {
+		path, exists := launcher.LookPath()
+
+		if exists {
+			u, err := launcher.New().
+				Bin(path).
+				Headless(false).
+				Devtools(false).
+				Launch()
+
+			if err == nil {
+				return instantiateBrowser(u)
+			} else {
+				return rod.New().MustConnect()
+			}
+		} else {
+			return rod.New().MustConnect()
+		}
+
+	}
+}
+
+func JSONPostHeader(url string, body any, header map[string]string) (string, error) {
+	bodyBytes, err := json.Marshal(&body)
+	if err != nil {
+		return "", nil
+	}
+
+	reader := bytes.NewReader(bodyBytes)
+
+	// Make HTTP POST request
+	request, err := http.NewRequest(http.MethodPost, url, reader)
+	if err != nil {
+		return "", nil
+	}
+
+	for key, value := range header {
+		request.Header.Set(key, value)
+	}
+
+	httpClient := &http.Client{}
+
+	resp, err := httpClient.Do(request)
+	if err != nil {
+		return "", nil
+	}
+
+	// Close response body
+	defer resp.Body.Close()
+
+	// Read response body
+	responseBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", nil
+	}
+
+	if resp.StatusCode >= 400 && resp.StatusCode <= 500 {
+		return string(responseBody), errors.New("400/500 status code error")
+	}
+
+	return string(responseBody), nil
+}
+
 func try_robo_Login() {
-	if path, exists := launcher.LookPath(); exists {
-		u := launcher.New().
-			Bin(path).
-			Headless(false).
-			// Devtools(true).
-			MustLaunch()
 
-		browser := rod.New().
-			ControlURL(u).
-			// SlowMotion(2 * time.Second).
-			// Trace(true).
-			MustConnect()
-		defer browser.MustClose()
+	browser := startNativeOrPORT()
+	// startMonitor(browser)
+	defer browser.MustClose()
+	router := browser.HijackRequests()
+	defer router.MustStop()
 
-		// startMonitor(browser)
+	router.MustAdd("https://prijava.eid.gov.rs/oauth2/userinfo", RoboHandlerResponse(func(ctx *rod.Hijack) {
+		fmt.Println(upitStanja)
+	}))
 
-		router := browser.HijackRequests()
-		defer router.MustStop()
+	go router.Run()
 
-		router.MustAdd("https://prijava.eid.gov.rs/oauth2/userinfo", func(ctx *rod.Hijack) {
+	page :=
+		browser.MustPage("https://lpa.gov.rs/jisportal/homepage") // .MustWait(`() => document.title === 'hi'`)
 
-			ctx.Request.Req().Header.Set("My-Header", "test")
+	fmt.Println("done")
 
-			_ = ctx.LoadResponse(http.DefaultClient, true)
-			p := ctx.Response.Body()
+	page.MustElement("div.sistem-login> a").MustClick()
+	page.MustElement("#username1").MustClick().MustInput(email)
+	page.MustElement("#password1").MustClick().MustInput(password)
+	page.MustElement("#aetButtonUP1").MustClick()
 
-			if len(p) > 5 {
+	utils.Pause() // pause goroutine
+}
 
-				parseJSON(p, &jsonRes)
-				fmt.Println(jsonRes.HTTPSchemaIDRsClaimsUmcn)
+func RoboHandlerResponse(handler func(ctx *rod.Hijack)) func(*rod.Hijack) {
+	return func(ctx *rod.Hijack) {
+		_ = ctx.LoadResponse(http.DefaultClient, true)
+		p := ctx.Response.Body()
+
+		if (len(p) > 5) && (!hasGotData) {
+			if len(ctx.Request.Header("Authorization")) > 5 {
+				hasGotData = true
 			}
 
-		})
+			parseJSON(p, &jsonRes)
+			upitData.Pib = jsonRes.HTTPSchemaIDRsClaimsUmcn
+			responseBody, err := JSONPostHeader(requestURL, &upitData, map[string]string{
+				"Content-Type":  "application/json",
+				"authorization": ctx.Request.Header("Authorization"),
+			})
+			if err != nil {
+				log.Fatal(err)
+			}
 
-		go router.Run()
-
-		page :=
-			browser.MustPage("https://lpa.gov.rs/jisportal/homepage") // .MustWait(`() => document.title === 'hi'`)
-
-		fmt.Println("done")
-
-		page.MustElement("div.sistem-login> a").MustClick()
-		page.MustElement("#username1").MustClick().MustInput(email)
-		page.MustElement("#password1").MustClick().MustInput(password)
-		page.MustElement("#aetButtonUP1").MustClick()
-
-		utils.Pause() // pause goroutine
+			parseJSON(responseBody, &upitStanja)
+			handler(ctx)
+		}
 	}
+}
+
+func instantiateBrowser(u string) *rod.Browser {
+	return rod.New().
+		ControlURL(u).
+		// SlowMotion(2 * time.Second).
+		// Trace(true).
+		MustConnect()
 
 }
