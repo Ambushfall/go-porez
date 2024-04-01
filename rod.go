@@ -1,31 +1,35 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
 
 	"github.com/go-rod/rod"
 	"github.com/go-rod/rod/lib/launcher"
-	"github.com/go-rod/rod/lib/utils"
 )
 
-func try_robo_Login() {
+func try_robo_Login(email string, password string) (success bool, response string, err error) {
 
 	browser := startNativeOrPORT()
 	// startMonitor(browser)
 	defer browser.MustClose()
 	router := browser.HijackRequests()
 	defer router.MustStop()
+	done := make(chan bool, 1)
+	var rez string
 
 	router.MustAdd("https://prijava.eid.gov.rs/oauth2/userinfo", RoboHandlerResponse(func(ctx *rod.Hijack) {
-
 		if len(upitStanja.UpitStanjaSaldoOpstList) >= 1 {
 			qrbody := TransformerUpitaStanja(upitStanja)
 			response := GenerateQR(qrbody, ctx.Request.Header("Authorization"))
-			fmt.Println(response)
+			rez = response
+			go worker(done)
 		} else {
+			err = errors.New("empty name")
 			fmt.Println("Porez se ne moze proveriti trenutno, nema povratnih informacija")
+			go worker(done)
 		}
 
 	}))
@@ -41,8 +45,8 @@ func try_robo_Login() {
 	page.MustElement("#username1").MustClick().MustInput(email)
 	page.MustElement("#password1").MustClick().MustInput(password)
 	page.MustElement("#aetButtonUP1").MustClick()
-
-	utils.Pause() // pause goroutine
+	<-done
+	return true, rez, err
 }
 
 func RoboHandlerResponse(handler func(ctx *rod.Hijack)) func(*rod.Hijack) {
@@ -95,7 +99,7 @@ func startNativeOrPORT() *rod.Browser {
 		if exists {
 			u, err := launcher.New().
 				Bin(path).
-				Headless(false).
+				Headless(true).
 				Devtools(false).
 				Launch()
 

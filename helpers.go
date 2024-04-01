@@ -25,7 +25,15 @@ func HandleJSONRequestParams(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
-	JSONPayloadResponse(w, p)
+	ok, rez, err := try_robo_Login(p.Email, p.Password)
+	if err != nil {
+		log.Fatalf("Error: %v", err)
+	} else {
+		if ok {
+			ImagePayloadResponse(w, rez)
+		}
+	}
+
 }
 
 // Takes a responseWriter and any Payload
@@ -34,6 +42,17 @@ func JSONPayloadResponse(w http.ResponseWriter, p any) {
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(p); err != nil {
 		log.Println("failed", err)
+	}
+}
+
+// server string array buffer as image response
+// you don't need a fucking image writer
+func ImagePayloadResponse(w http.ResponseWriter, p string) {
+	buff := []byte(p)
+	w.Header().Set("Content-Type", "image/png")
+	_, err := w.Write(buff)
+	if err != nil {
+		log.Fatalf("Err: %#v", err)
 	}
 }
 
