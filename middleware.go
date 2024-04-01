@@ -38,9 +38,13 @@ Code to be executed after authorizing
 func BasicAuth(handler http.HandlerFunc, username, password, realm string) http.HandlerFunc {
 
 	return func(w http.ResponseWriter, r *http.Request) {
-
+		var client string
 		user, pass, ok := r.BasicAuth()
-		client := grabClient(r.Header.Get("Sec-Ch-Ua"))
+		if r.Header.Get("Sec-Ch-Ua") != "" {
+			client = strings.Trim(grabClient(r.Header.Get("Sec-Ch-Ua")), " ")
+		} else {
+			client = ""
+		}
 
 		unauthorized := !ok ||
 			subtle.ConstantTimeCompare([]byte(user), []byte(username)) != 1 ||
@@ -53,7 +57,7 @@ func BasicAuth(handler http.HandlerFunc, username, password, realm string) http.
 			errResp := ErrResponse{
 				Resonse: "Client unsupported",
 				Code:    401,
-				Client:  strings.Trim(client, " "),
+				Client:  client,
 			}
 
 			if err := json.NewEncoder(w).Encode(errResp); err != nil {
