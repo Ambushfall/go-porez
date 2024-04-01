@@ -37,4 +37,6 @@ jobs:
         prerelease: false
         automatic_release_tag: latest
         files: |
-          ./dist/*
+          dist/darwin/backend-*
+          dist/linux/backend-*
+          dist/windows/backend-*
