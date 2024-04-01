@@ -29,7 +29,6 @@ jobs:
         cp ./buildall.sh build.sh
         chmod +x ./build.sh
         ./build.sh backend
-        ls ./
 
     - uses: "marvinpinto/action-automatic-releases@latest"
       with:
