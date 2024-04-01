@@ -21,7 +21,10 @@ jobs:
         go-version: '1.22.1'
 
     - name: Build
-      run: ./buildall.sh backend
+      run: |
+        cp ./buildall.sh build.sh
+        chmod +x ./build.sh
+        ./build.sh
     - uses: "marvinpinto/action-automatic-releases@latest"
       with:
         repo_token: "${{ secrets.GITHUB_TOKEN }}"
