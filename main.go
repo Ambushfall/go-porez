@@ -11,7 +11,7 @@ import (
 	"time"
 )
 
-const debug bool = true
+const debug bool = false
 
 var jsonRes UserInfo
 var email string
