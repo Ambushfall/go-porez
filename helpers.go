@@ -134,7 +134,7 @@ func TransformerUpitaStanja(upit UpitStanja) QRBody {
 		amount = "RSD253,00"
 	} else {
 		amount = fmt.Sprintf("RSD%s", strings.ReplaceAll(fmt.Sprintf("%.2f", saldoUkupan), ".", ","))
-		if saldoUkupan < 0 {
+		if saldoUkupan <= 0 {
 			log.Fatalf("Vrednost poreza je ispod 0, %f", saldoUkupan)
 		}
 	}
